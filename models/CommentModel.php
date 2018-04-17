@@ -14,6 +14,7 @@ use yii2mod\comments\traits\ModuleTrait;
 use yii2mod\moderation\enums\Status;
 use yii2mod\moderation\ModerationBehavior;
 use yii2mod\moderation\ModerationQuery;
+use common\helpers\HtmlUser;
 
 /**
  * Class CommentModel
@@ -234,19 +235,47 @@ class CommentModel extends ActiveRecord
      */
     public static function getTree($entity, $entityId, $maxLevel = null)
     {
+        //; // 12334656
+        $addWhere = [
+            'c.entityId' => $entityId,
+            'c.entity' => $entity,
+        ];
+        $urlArray = parse_url($_SERVER['REQUEST_URI']);
+      
         $query = static::find()
             ->alias('c')
             ->approved()
-            ->andWhere([
-                'c.entityId' => $entityId,
-                'c.entity' => $entity,
-            ])
+            ->andWhere($addWhere)
             ->orderBy(['c.parentId' => SORT_ASC, 'c.createdAt' => SORT_ASC])
             ->with(['author']);
 
         if ($maxLevel > 0) {
             $query->andWhere(['<=', 'c.level', $maxLevel]);
         }
+
+        if($urlArray['path'] == '/user' || $urlArray['path'] == '/user/'.\Yii::$app->user->identity->id){
+            $orWhere['c.url'] = '/user';
+            $orWhere['c.url'] = '/user/'.\Yii::$app->user->identity->id;
+            $query->orWhere($orWhere);
+        } 
+        
+        if($urlArray['path'] == '/user/news'){ 
+            $friends = \Yii::$app->db->createCommand('SELECT * FROM friend WHERE accept = 1 AND (to_user_id = '.\Yii::$app->user->identity->id.' OR from_user_id= '.\Yii::$app->user->identity->id.')')->queryAll(\PDO::FETCH_OBJ);
+            
+            $friendsId = [];
+            foreach($friends as $f => $item){     
+                if($item->to_user_id == \Yii::$app->user->identity->id){
+                    $friendsId[] = $item->from_user_id;
+                } 
+                if($item->from_user_id == \Yii::$app->user->identity->id){
+                    $friendsId[] = $item->to_user_id;
+                }
+
+            }
+
+            $where = " (c.url = '/user/".\Yii::$app->user->identity->id."' AND c.createdBy != ".\Yii::$app->user->identity->id.") OR (c.createdBy IN (".implode($friendsId).") AND c.url = '/user') ";//AND c.entityId = '".$entityId."' AND c.entity = '".$entity."'
+            $query->where($where);
+        }         
 
         $models = $query->all();
 
@@ -309,7 +338,21 @@ class CommentModel extends ActiveRecord
      */
     public function getPostedDate()
     {
-        return Yii::$app->formatter->asRelativeTime($this->createdAt);
+        $datetime = new \DateTime();
+        $today = strtotime($datetime->format("Y-m-d"));
+        $datetime->sub(new \DateInterval('P1D'));
+        $yesterday = strtotime($datetime->format("Y-m-d"));
+
+        if($this->createdAt > (time() - 60*60*12)){
+            return Yii::$app->formatter->asRelativeTime($this->createdAt);
+        }else if($this->createdAt > $today){
+            return 'Сегодня в '.Yii::$app->formatter->asTime($this->createdAt,'short');
+        }else if($this->createdAt > $yesterday){
+            return 'Вчера в '.Yii::$app->formatter->asTime($this->createdAt, 'short');
+        }else{
+            return Yii::$app->formatter->asDate($this->createdAt, 'd').' '.HtmlUser::getRusMonth(Yii::$app->formatter->asDate($this->createdAt, 'M')).' в '.Yii::$app->formatter->asTime($this->createdAt, 'short');
+        }
+        
     }
 
     /**
