@@ -235,12 +235,10 @@ class CommentModel extends ActiveRecord
      */
     public static function getTree($entity, $entityId, $maxLevel = null)
     {
-        //; // 12334656
         $addWhere = [
             'c.entityId' => $entityId,
             'c.entity' => $entity,
         ];
-        $urlArray = parse_url($_SERVER['REQUEST_URI']);
       
         $query = static::find()
             ->alias('c')
@@ -253,10 +251,13 @@ class CommentModel extends ActiveRecord
             $query->andWhere(['<=', 'c.level', $maxLevel]);
         }
 
+        $urlArray = parse_url($_SERVER['REQUEST_URI']);
         if($urlArray['path'] == '/user' || $urlArray['path'] == '/user/'.\Yii::$app->user->identity->id){
             $orWhere['c.url'] = '/user';
             $orWhere['c.url'] = '/user/'.\Yii::$app->user->identity->id;
             $query->orWhere($orWhere);
+            $where = " (c.url = '/user/".\Yii::$app->user->identity->id."' OR c.url = '/user')  OR (c.url = '/user/news' AND c.createdBy = ".\Yii::$app->user->identity->id.") AND c.status = 1";// AND c.entityId = '".$entityId."' AND c.entity = '".$entity."' 
+            $query->where($where); 
         } 
         
         if($urlArray['path'] == '/user/news'){ 
@@ -273,10 +274,10 @@ class CommentModel extends ActiveRecord
 
             }
 
-            $where = " (c.url = '/user/".\Yii::$app->user->identity->id."' AND c.createdBy != ".\Yii::$app->user->identity->id.") OR (c.createdBy IN (".implode($friendsId).") AND c.url = '/user') ";//AND c.entityId = '".$entityId."' AND c.entity = '".$entity."'
-            $query->where($where);
+            $where = " (c.url = '/user/".\Yii::$app->user->identity->id."' AND c.createdBy != ".\Yii::$app->user->identity->id.") OR (c.createdBy IN (".implode($friendsId).") AND (c.url = '/user/news' OR c.url = '/user')) OR (c.url = '/user/news' AND c.createdBy = ".\Yii::$app->user->identity->id.") AND c.status = 1";// AND c.entityId = '".$entityId."' AND c.entity = '".$entity."' 
+            $query->where($where);   
         }         
-
+//echo $query->createCommand()->getRawSql();//die();
         $models = $query->all();
 
         if (!empty($models)) {
